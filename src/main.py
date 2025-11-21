@@ -90,32 +90,23 @@ def download(session):
 
 def pep(session):
     response = get_response(session, PEP_DOC_URL)
-    if response is None:
-        return
     soup = BeautifulSoup(response.text, features='lxml')
     main_div = find_tag(soup, 'section', attrs={'id': 'pep-content'})
-    pep_fid = find_tag(main_div, 'section', attrs={'id': 'index-by-category'})
-    all_section = pep_fid.find_all('section')
+    pep_section = find_tag(
+        main_div, 'section', attrs={'id': 'index-by-category'}
+    )
+    all_section = pep_section.find_all('section')
     status_counter = Counter()
     mismatches = []
     for section in tqdm(all_section):
         tbody = find_tag(section, 'tbody')
-        if not tbody:
-            continue
         for row in tbody.find_all('tr'):
             abbr_tag = find_tag(row, 'abbr')
-            status_abbr = abbr_tag.get_text(strip=True) if abbr_tag else ''
+            status_abbr = abbr_tag.text[1:]
             a_tag = row.find('a', class_='pep reference internal')
-            if not a_tag:
-                continue
             href = a_tag['href']
-            pep_number = a_tag.get_text(strip=True).split()[0]
-            if pep_number == '0':
-                continue
             with_link = urljoin(PEP_DOC_URL, href)
             response = get_response(session, with_link)
-            if response is None:
-                continue
             soup = BeautifulSoup(response.text, features='lxml')
             status_on_page = None
             for dl in soup.find_all('dl', class_='rfc2822 field-list simple'):
@@ -123,11 +114,8 @@ def pep(session):
                     if dt.get_text(strip=True).startswith('Status'):
                         dd = dt.find_next_sibling('dd')
                         status_on_page = dd.get_text(strip=True)
-                        break
                 if status_on_page:
                     break
-            if not status_on_page:
-                continue
             status_counter[status_on_page] += 1
             expected_statuses = EXPECTED_STATUS.get(status_abbr, ())
             if expected_statuses and status_on_page not in expected_statuses:
@@ -144,7 +132,7 @@ def pep(session):
             logging.info(f"Ожидаемые статусы: {list(mismatch['expected'])}")
     results = [['Статус', 'Количество']]
     results.extend(sorted(status_counter.items()))
-    results.append(['Итого', sum(status_counter.values())])
+    results.append(['Total', sum(status_counter.values())])
     return results
 
 
