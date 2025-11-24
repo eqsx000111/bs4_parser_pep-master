@@ -10,7 +10,7 @@ from configs import configure_argument_parser, configure_logging
 from constants import BASE_DIR, EXPECTED_STATUS, MAIN_DOC_URL, PEP_DOC_URL
 from exceptions import NothingFoundError
 from outputs import control_output
-from utils import find_tag, find_soup
+from utils import find_soup, find_tag
 
 ARCHIVE_DOWNLOAD_DONE = 'Архив был загружен и сохранён: {archive_path}'
 ALL_VERSION_NOT_FOUND = 'Не найден блок "All version"'
