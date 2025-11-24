@@ -4,17 +4,15 @@ from collections import Counter
 from urllib.parse import urljoin
 
 import requests_cache
-from bs4 import BeautifulSoup
 from tqdm import tqdm
 
 from configs import configure_argument_parser, configure_logging
 from constants import BASE_DIR, EXPECTED_STATUS, MAIN_DOC_URL, PEP_DOC_URL
 from exceptions import NothingFoundError
 from outputs import control_output
-from utils import find_tag, get_response
+from utils import find_tag, find_soup
 
 ARCHIVE_DOWNLOAD_DONE = 'Архив был загружен и сохранён: {archive_path}'
-PAGE_ERROR = 'Не удалось получить страницу: {url}'
 ALL_VERSION_NOT_FOUND = 'Не найден блок "All version"'
 RESULTS_LATEST_VER_HEADER = ('Ссылка на документацию', 'Версия', 'Статус')
 RESULTS_WHATS_NEW_HEADER = ('Ссылка на статью', 'Заголовок', 'Редактор, автор')
@@ -26,14 +24,6 @@ PARSER_RUN = 'Парсер запущен!'
 ARGS = 'Аргументы командной строки: {args}'
 PARSER_DONE = 'Парсер завершил работу.'
 LAST_EXCEPTION = 'Произошла непредвиденная ошибка: {error}'
-
-
-def find_soup(session, url):
-    response = get_response(session, url)
-    if response is None:
-        logging.error(PAGE_ERROR.format(url=url), stack_info=True)
-        return None
-    return BeautifulSoup(response.text, features='lxml')
 
 
 def whats_new(session):
