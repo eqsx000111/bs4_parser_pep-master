@@ -1,9 +1,7 @@
-import logging
-
 from bs4 import BeautifulSoup
 from requests import RequestException
 
-from exceptions import ParserFindTagException, ParserRequestException
+from exceptions import ParserFindTagException
 
 REQUEST_EXCEPTION = (
     'Возникла ошибка при загрузке страницы {url}, ошибка: {errors}'
@@ -18,7 +16,7 @@ def get_response(session, url, encoding='utf-8'):
         response.encoding = encoding
         return response
     except RequestException as errors:
-        raise ParserRequestException(
+        raise RuntimeError(
             REQUEST_EXCEPTION.format(url=url, errors=errors)
         )
 
@@ -32,9 +30,5 @@ def find_tag(soup, tag, attrs=None):
     return searched_tag
 
 
-def find_soup(session, url):
-    response = get_response(session, url)
-    if response is None:
-        logging.error(PAGE_ERROR.format(url=url), stack_info=True)
-        return None
-    return BeautifulSoup(response.text, features='lxml')
+def calculate_soup(session, url, features='lxml'):
+    return BeautifulSoup(get_response(session, url).text, features=features)

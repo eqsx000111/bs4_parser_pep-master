@@ -6,40 +6,51 @@ from urllib.parse import urljoin
 import requests_cache
 from tqdm import tqdm
 
+import constants
 from configs import configure_argument_parser, configure_logging
-from constants import BASE_DIR, EXPECTED_STATUS, MAIN_DOC_URL, PEP_DOC_URL
+from constants import EXPECTED_STATUS, MAIN_DOC_URL, PEP_DOC_URL
 from exceptions import NothingFoundError
 from outputs import control_output
-from utils import find_soup, find_tag
+from utils import calculate_soup, find_tag
 
+BASE_DIR = constants.BASE_DIR
 ARCHIVE_DOWNLOAD_DONE = 'Архив был загружен и сохранён: {archive_path}'
 ALL_VERSION_NOT_FOUND = 'Не найден блок "All version"'
 RESULTS_LATEST_VER_HEADER = ('Ссылка на документацию', 'Версия', 'Статус')
 RESULTS_WHATS_NEW_HEADER = ('Ссылка на статью', 'Заголовок', 'Редактор, автор')
 MISMATCH = 'Несовпадающие статусы:'
-URLS = 'Адрес: {url}'
+MISMATCH_INFO = (
+    'Адрес: {url} | Статус в карточке: '
+    '{status_on_page} | Ожидаемые статусы: {expected}'
+)
 STATUS_ON_PAGE = 'Статус в карточке: {status_on_page}'
 EXPECTED = 'Ожидаемые статусы: {expected}'
 PARSER_RUN = 'Парсер запущен!'
 ARGS = 'Аргументы командной строки: {args}'
 PARSER_DONE = 'Парсер завершил работу.'
 LAST_EXCEPTION = 'Произошла непредвиденная ошибка: {error}'
+SOUP_ERROR = 'Не удалось получить soup для {link}: {error}'
+
+
+def get_downloads():
+    return BASE_DIR / constants.DOWNLOADS_DIR_NAME
 
 
 def whats_new(session):
     whats_new_url = urljoin(MAIN_DOC_URL, 'whatsnew/')
-    soup = find_soup(session, whats_new_url)
-    sections_by_python = soup.select(
-        '#what-s-new-in-python div.toctree-wrapper li.toctree-l1'
+    soup = calculate_soup(session, whats_new_url)
+    versions = soup.select(
+        '#what-s-new-in-python div.toctree-wrapper li.toctree-l1 > a'
     )
     results = [RESULTS_WHATS_NEW_HEADER]
-    for section in tqdm(sections_by_python):
-        version_a_tag = section.find('a')
-        href = version_a_tag['href']
-        version_link = urljoin(whats_new_url, href)
-        soup = find_soup(session, version_link)
-        if soup is None:
-            continue
+    for version in tqdm(versions):
+        version_link = urljoin(whats_new_url, version['href'])
+        try:
+            soup = calculate_soup(session, version_link)
+        except Exception as error:
+            raise RuntimeError(
+                SOUP_ERROR.format(link=version_link, error=error)
+            )
         dl = soup.find('dl')
         dl_text = dl.text.replace('\n', ' ') if dl else ' '
         results.append((version_link, find_tag(soup,  'h1').text, dl_text))
@@ -47,7 +58,7 @@ def whats_new(session):
 
 
 def latest_versions(session):
-    soup = find_soup(session, MAIN_DOC_URL)
+    soup = calculate_soup(session, MAIN_DOC_URL)
     sidebar = find_tag(soup, 'div', attrs={'class': 'sphinxsidebarwrapper'})
     ul_tags = sidebar.find_all('ul')
     for ul in ul_tags:
@@ -70,7 +81,7 @@ def latest_versions(session):
 
 def download(session):
     downloads_url = urljoin(MAIN_DOC_URL, 'download.html')
-    soup = find_soup(session, downloads_url)
+    soup = calculate_soup(session, downloads_url)
     pdf_a4_link = urljoin(
         downloads_url,
         soup.select_one(
@@ -78,7 +89,7 @@ def download(session):
         )['href']
     )
     filename = pdf_a4_link.split('/')[-1]
-    downloads_dir = BASE_DIR / 'downloads'
+    downloads_dir = get_downloads()
     archive_path = downloads_dir / filename
     downloads_dir.mkdir(exist_ok=True)
     response = session.get(pdf_a4_link)
@@ -88,40 +99,41 @@ def download(session):
 
 
 def pep(session):
-    soup = find_soup(session, PEP_DOC_URL)
-    all_section = soup.select('#index-by-category section ')
+    soup = calculate_soup(session, PEP_DOC_URL)
+    all_section = soup.select('#index-by-category section tbody tr')
     status_counter = Counter()
     mismatches = []
-    for section in tqdm(all_section):
-        for row in section.select('tbody tr'):
-            status_abbr = row.select_one('abbr').text[1:]
-            with_link = urljoin(
-                PEP_DOC_URL,
-                row.select_one('a.pep.reference.internal')['href']
-            )
-            soup = find_soup(session, with_link)
-            status_on_page = None
-            status_dd = soup.select_one(
-                'dl.rfc2822.field-list.simple dt:-soup-contains("Status") + dd'
-            )
-            status_on_page = status_dd.get_text(
-                strip=True
-            ) if status_dd else None
-            status_counter[status_on_page] += 1
-            expected_statuses = EXPECTED_STATUS.get(status_abbr, ())
-            if expected_statuses and status_on_page not in expected_statuses:
-                mismatches.append(
-                    [
-                        URLS.format(url=with_link),
-                        STATUS_ON_PAGE.format(status_on_page=status_on_page),
-                        EXPECTED.format(expected=list(expected_statuses))
-                    ]
+    for row in tqdm(all_section):
+        status_abbr = row.select_one('abbr').text[1:]
+        with_link = urljoin(
+            PEP_DOC_URL,
+            row.select_one('a.pep.reference.internal')['href']
+        )
+        try:
+            soup = calculate_soup(session, with_link)
+        except Exception as error:
+            raise RuntimeError(SOUP_ERROR.format(link=with_link, error=error))
+        status_on_page = None
+        status_dd = soup.select_one(
+            'dl.rfc2822.field-list.simple dt:-soup-contains("Status") + dd'
+        )
+        status_on_page = status_dd.get_text(
+            strip=True
+        ) if status_dd else None
+        status_counter[status_on_page] += 1
+        expected_statuses = EXPECTED_STATUS.get(status_abbr, ())
+        if expected_statuses and status_on_page not in expected_statuses:
+            mismatches.append(
+                MISMATCH_INFO.format(
+                    url=with_link,
+                    status_on_page=status_on_page,
+                    expected=list(expected_statuses)
                 )
+            )
     if mismatches:
         logging.info(MISMATCH)
         for mismatch in mismatches:
-            for line in mismatch:
-                logging.info(line)
+            logging.info(mismatch)
     return [
         ('Статус', 'Количество'),
         *status_counter.items(),
