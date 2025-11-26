@@ -45,7 +45,7 @@ def file_output(results, cli_args, encoding='utf-8'):
 
 
 OUTPUT_HANDLERS = {
-        constants.PRETTY: pretty_output,
-        constants.FILE: file_output,
-        None: default_output,
-    }
+    constants.PRETTY: pretty_output,
+    constants.FILE: file_output,
+    None: default_output,
+}

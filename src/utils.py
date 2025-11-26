@@ -1,5 +1,4 @@
 from bs4 import BeautifulSoup
-from requests import RequestException
 
 from exceptions import ParserFindTagException
 
@@ -15,8 +14,8 @@ def get_response(session, url, encoding='utf-8'):
         response = session.get(url)
         response.encoding = encoding
         return response
-    except RequestException as errors:
-        raise RuntimeError(
+    except ConnectionError as errors:
+        raise ConnectionError(
             REQUEST_EXCEPTION.format(url=url, errors=errors)
         )
 
@@ -30,5 +29,5 @@ def find_tag(soup, tag, attrs=None):
     return searched_tag
 
 
-def calculate_soup(session, url, features='lxml'):
+def create_soup(session, url, features='lxml'):
     return BeautifulSoup(get_response(session, url).text, features=features)

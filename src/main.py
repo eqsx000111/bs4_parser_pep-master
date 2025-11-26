@@ -2,6 +2,7 @@ import logging
 import re
 from collections import Counter
 from urllib.parse import urljoin
+from requests import RequestException
 
 import requests_cache
 from tqdm import tqdm
@@ -11,7 +12,7 @@ from configs import configure_argument_parser, configure_logging
 from constants import EXPECTED_STATUS, MAIN_DOC_URL, PEP_DOC_URL
 from exceptions import NothingFoundError
 from outputs import control_output
-from utils import calculate_soup, find_tag
+from utils import create_soup, find_tag
 
 BASE_DIR = constants.BASE_DIR
 ARCHIVE_DOWNLOAD_DONE = 'Архив был загружен и сохранён: {archive_path}'
@@ -38,19 +39,20 @@ def get_downloads():
 
 def whats_new(session):
     whats_new_url = urljoin(MAIN_DOC_URL, 'whatsnew/')
-    soup = calculate_soup(session, whats_new_url)
-    versions = soup.select(
+    soup = create_soup(session, whats_new_url)
+    links = soup.select(
         '#what-s-new-in-python div.toctree-wrapper li.toctree-l1 > a'
     )
     results = [RESULTS_WHATS_NEW_HEADER]
-    for version in tqdm(versions):
-        version_link = urljoin(whats_new_url, version['href'])
+    for link in tqdm(links):
+        version_link = urljoin(whats_new_url, link['href'])
         try:
-            soup = calculate_soup(session, version_link)
-        except Exception as error:
-            raise RuntimeError(
+            soup = create_soup(session, version_link)
+        except RequestException as error:
+            logging.warning(
                 SOUP_ERROR.format(link=version_link, error=error)
             )
+            continue
         dl = soup.find('dl')
         dl_text = dl.text.replace('\n', ' ') if dl else ' '
         results.append((version_link, find_tag(soup,  'h1').text, dl_text))
@@ -58,7 +60,7 @@ def whats_new(session):
 
 
 def latest_versions(session):
-    soup = calculate_soup(session, MAIN_DOC_URL)
+    soup = create_soup(session, MAIN_DOC_URL)
     sidebar = find_tag(soup, 'div', attrs={'class': 'sphinxsidebarwrapper'})
     ul_tags = sidebar.find_all('ul')
     for ul in ul_tags:
@@ -81,7 +83,7 @@ def latest_versions(session):
 
 def download(session):
     downloads_url = urljoin(MAIN_DOC_URL, 'download.html')
-    soup = calculate_soup(session, downloads_url)
+    soup = create_soup(session, downloads_url)
     pdf_a4_link = urljoin(
         downloads_url,
         soup.select_one(
@@ -99,7 +101,7 @@ def download(session):
 
 
 def pep(session):
-    soup = calculate_soup(session, PEP_DOC_URL)
+    soup = create_soup(session, PEP_DOC_URL)
     all_section = soup.select('#index-by-category section tbody tr')
     status_counter = Counter()
     mismatches = []
@@ -110,9 +112,10 @@ def pep(session):
             row.select_one('a.pep.reference.internal')['href']
         )
         try:
-            soup = calculate_soup(session, with_link)
-        except Exception as error:
-            raise RuntimeError(SOUP_ERROR.format(link=with_link, error=error))
+            soup = create_soup(session, with_link)
+        except RequestException as error:
+            logging.warning(SOUP_ERROR.format(link=with_link, error=error))
+            continue
         status_on_page = None
         status_dd = soup.select_one(
             'dl.rfc2822.field-list.simple dt:-soup-contains("Status") + dd'
@@ -132,8 +135,7 @@ def pep(session):
             )
     if mismatches:
         logging.info(MISMATCH)
-        for mismatch in mismatches:
-            logging.info(mismatch)
+        list(map(logging.info, mismatches))
     return [
         ('Статус', 'Количество'),
         *status_counter.items(),
