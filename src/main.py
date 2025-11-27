@@ -2,7 +2,6 @@ import logging
 import re
 from collections import Counter
 from urllib.parse import urljoin
-from requests import RequestException
 
 import requests_cache
 from tqdm import tqdm
@@ -44,18 +43,21 @@ def whats_new(session):
         '#what-s-new-in-python div.toctree-wrapper li.toctree-l1 > a'
     )
     results = [RESULTS_WHATS_NEW_HEADER]
+    warnings = []
     for link in tqdm(links):
         version_link = urljoin(whats_new_url, link['href'])
         try:
             soup = create_soup(session, version_link)
-        except RequestException as error:
-            logging.warning(
+        except ConnectionError as error:
+            warnings.append(
                 SOUP_ERROR.format(link=version_link, error=error)
             )
             continue
         dl = soup.find('dl')
         dl_text = dl.text.replace('\n', ' ') if dl else ' '
         results.append((version_link, find_tag(soup,  'h1').text, dl_text))
+    if warnings:
+        list(map(logging.warning, warnings))
     return results
 
 
@@ -105,6 +107,7 @@ def pep(session):
     all_section = soup.select('#index-by-category section tbody tr')
     status_counter = Counter()
     mismatches = []
+    warnings = []
     for row in tqdm(all_section):
         status_abbr = row.select_one('abbr').text[1:]
         with_link = urljoin(
@@ -113,8 +116,8 @@ def pep(session):
         )
         try:
             soup = create_soup(session, with_link)
-        except RequestException as error:
-            logging.warning(SOUP_ERROR.format(link=with_link, error=error))
+        except ConnectionError as error:
+            warnings.append(SOUP_ERROR.format(link=with_link, error=error))
             continue
         status_on_page = None
         status_dd = soup.select_one(
@@ -136,6 +139,8 @@ def pep(session):
     if mismatches:
         logging.info(MISMATCH)
         list(map(logging.info, mismatches))
+    if warnings:
+        list(map(logging.warning, warnings))
     return [
         ('Статус', 'Количество'),
         *status_counter.items(),
