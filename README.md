@@ -7,11 +7,15 @@ CLI-утилита для парсинга документации Python и а
 
 ## Автор
 
-**Email:** [deddotu@yandex.ru](mailto:deddotu@yandex.ru) 
+**GitHub:** [eqsx000111](https://github.com/eqsx000111)
 
-**GitHub:** [eqsx000111](https://github.com/eqsx000111)  
+**Email:** [deddotu@yandex.ru](mailto:deddotu@yandex.ru)
 
-**Иван Ильницкий**  
+**Telegram:** @eqsx1
+
+**Phone number:** 89787172691
+
+**ФИО:** Ильницкий Иван Александрович 
 
 ---
 
